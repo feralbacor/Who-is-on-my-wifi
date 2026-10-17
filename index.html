@@ -67,7 +67,7 @@
   .node.unknown .dot { stroke: var(--warn); }
   .node.hub .dot { stroke: var(--accent); }
   .node:hover .dot, .node:focus-visible .dot { fill: #1b2633; stroke-width: 4; }
-  .node text { fill: var(--text); font-size: 11px; text-anchor: middle; }
+  .node text { fill: var(--text); font-size: 11px; text-anchor: middle; paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
   .node text.ip { fill: var(--muted); font-size: 10px; }
   .node text.glyph { font-size: 12px; font-weight: 700; dominant-baseline: central; }
   .pulse { fill: none; stroke: var(--warn); transform-box: fill-box; transform-origin: center; animation: grow 1.8s infinite; }

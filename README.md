@@ -3,6 +3,8 @@
 See who is on your home network, live, from a small dashboard on your Windows PC.
 Get a Telegram message when a device you have never seen joins your Wi-Fi.
 
+![Dashboard overview (demo data)](docs/screenshot.png)
+
 - **Overview**: live topology map, alert summary, Wi-Fi band and signal health, recent activity
 - **Assets**: every device ever seen, with vendor, IP, MAC, band and signal. Rename devices and mark the ones that are yours
 - **Alerts**: unknown devices online, unknown devices with a weak signal (possibly outside your home), scanner problems
@@ -105,3 +107,7 @@ python monitor.py --test
 - It sees which devices are on your network, not what they send. It can't inspect traffic or see attacks from the internet.
 - It only scans a /24 subnet (for example `192.168.1.0` to `192.168.1.255`).
 - It doesn't run in Docker on Windows: Docker Desktop's virtual machine can't see the MAC addresses on your home network.
+
+## License
+
+[MIT](LICENSE)

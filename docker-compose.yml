@@ -1,0 +1,7 @@
+services:
+  monitor:
+    build: .
+    network_mode: host  # the scanner needs the host's own network to see MAC addresses (Linux hosts only)
+    volumes:
+      - .:/app  # config.json and dispositivos.json stay in this folder, as without Docker
+    restart: unless-stopped

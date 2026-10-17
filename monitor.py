@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -190,7 +191,36 @@ def bucle_router():
         time.sleep(PAUSA_ROUTER)
 
 
+def ip_json(*args):
+    return json.loads(subprocess.run(['ip', '-j', *args], capture_output=True, text=True, timeout=10, check=True).stdout)
+
+
+def leer_vecinos(neigh, base):
+    """Vecinos de `ip -j neigh` que han contestado hace poco, como los devuelve escanear.ps1."""
+    return [{'ip': v['dst'], 'mac': v['lladdr'].upper().replace(':', '-')} for v in neigh
+            if v.get('lladdr') and v['dst'].startswith(base + '.') and {'REACHABLE', 'STALE'} & set(v.get('state', []))]
+
+
+def escanear_linux():
+    """Lo mismo que escanear.ps1 con las herramientas de Linux (iproute2 y ping)."""
+    ruta = next((r for r in ip_json('-4', 'route', 'show', 'default') if r.get('gateway')), None)
+    if ruta is None:
+        raise RuntimeError('Sin conexion de red')
+    interfaz = ip_json('addr', 'show', 'dev', ruta['dev'])[0]  # con -4 no trae la MAC
+    ip = next(a['local'] for a in interfaz['addr_info'] if a['family'] == 'inet')
+    base = ip.rsplit('.', 1)[0]
+    # shortcut: solo barre la /24 de este equipo; ampliar si la red de casa es más grande
+    with ThreadPoolExecutor(64) as hilos:  # 254 pings de 1 s en unos 4 s
+        hilos.map(lambda n: subprocess.run(['ping', '-c', '1', '-W', '1', f'{base}.{n}'],
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), range(1, 255))
+    time.sleep(6)  # deja a Linux confirmar por ARP los vecinos que ya conocía (DELAY -> REACHABLE)
+    return {'ip': ip, 'mac': interfaz['address'].upper().replace(':', '-'), 'gateway': ruta['gateway'],
+            'red': f'{base}.0/24', 'vecinos': leer_vecinos(ip_json('neigh', 'show', 'dev', ruta['dev']), base)}
+
+
 def escanear():
+    if sys.platform != 'win32':
+        return escanear_linux()
     salida = subprocess.run(
         ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', os.path.join(AQUI, 'escanear.ps1')],
         capture_output=True, text=True, timeout=90, creationflags=subprocess.CREATE_NO_WINDOW).stdout
@@ -332,6 +362,14 @@ def _prueba():
     estado['asociados'] = None  # el router no se puede leer
     aplicar({**yo, 'vecinos': [router, otro]}, ahora=11)
     assert not any(d['banda'] for d in ds.values()), 'si el router falla no se enseña banda'
+    # salida de `ip -j neigh` en Linux, con datos inventados
+    neigh = json.loads('''[{"dst":"10.0.0.1","dev":"eth0","lladdr":"aa:00:00:00:00:01","state":["REACHABLE"]},
+        {"dst":"10.0.0.9","dev":"eth0","lladdr":"92:00:00:00:00:09","state":["STALE"]},
+        {"dst":"10.0.0.20","dev":"eth0","state":["FAILED"]},
+        {"dst":"10.0.0.30","dev":"eth0","lladdr":"aa:00:00:00:00:30","state":["PROBE"]},
+        {"dst":"10.0.10.4","dev":"eth0","lladdr":"aa:00:00:00:10:04","state":["REACHABLE"]},
+        {"dst":"fe80::1","dev":"eth0","lladdr":"aa:00:00:00:00:01","router":null,"state":["REACHABLE"]}]''')
+    assert leer_vecinos(neigh, '10.0.0') == [router, movil]
     print('OK')
 
 
@@ -340,7 +378,8 @@ if __name__ == '__main__':
         _prueba()
     else:
         cargar()
-        ThreadingHTTPServer.allow_reuse_address = False  # en Windows SO_REUSEADDR deja abrir dos monitores en el mismo puerto
+        # en Windows SO_REUSEADDR deja abrir dos monitores en el mismo puerto; en Linux no, y sin él reiniciar falla un minuto
+        ThreadingHTTPServer.allow_reuse_address = sys.platform != 'win32'
         servidor = ThreadingHTTPServer(('127.0.0.1', PUERTO), Web)  # antes que los hilos: si ya hay otro abierto, salimos sin tocar nada
         threading.Thread(target=bucle_escaneo, daemon=True).start()
         threading.Thread(target=bucle_fabricantes, daemon=True).start()

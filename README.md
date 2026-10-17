@@ -1,6 +1,6 @@
 # Home Network Monitor
 
-See who is on your home network, live, from a small dashboard on your Windows PC.
+See who is on your home network, live, from a small dashboard on your Windows PC, Linux box or Raspberry Pi.
 Get a Telegram message when a device you have never seen joins your Wi-Fi.
 
 ![Dashboard overview (demo data)](docs/screenshot.png)
@@ -16,11 +16,11 @@ No dependencies: plain Python standard library and one HTML file.
 
 ## Requirements
 
-- Windows 10 or 11 (the scanner uses PowerShell)
-- Python 3.9 or newer, with `pythonw` on your `PATH`
-- Your PC connected to the home network you want to watch
+- Windows 10 or 11 (the scanner uses PowerShell), or Linux with `ip` (iproute2) and `ping`, which almost every distro has
+- Python 3.9 or newer (on Windows, with `pythonw` on your `PATH`), or Docker on Linux
+- The computer connected to the home network you want to watch
 
-## Quick start
+## Quick start (Windows)
 
 1. Download or clone this repository.
 2. Double-click `start.bat`. The dashboard opens at <http://localhost:8765>.
@@ -30,6 +30,34 @@ That's it. Telegram alerts and the router integration below are optional.
 
 To start it with Windows, put a shortcut to `start.bat` (or to `pythonw monitor.py`) in
 `shell:startup` (press Win+R and type `shell:startup`). Starting it twice is safe: the second copy exits on its own.
+
+## Linux, Raspberry Pi and Docker
+
+Without Docker:
+
+```
+python3 monitor.py
+```
+
+With Docker (Linux hosts only), from the repository folder:
+
+```
+docker compose up -d
+```
+
+The container uses the host's network (`network_mode: host`) so it can see the MAC addresses of your devices,
+and starts again after a reboot. It runs the code from this folder, so `config.json` and `dispositivos.json`
+stay here just like without Docker. After a `git pull`, run `docker compose restart`.
+
+Either way the dashboard is at <http://localhost:8765> **on that machine only** (see *Privacy and security*).
+On a headless Raspberry Pi, open an SSH tunnel from your PC and browse to <http://localhost:8765> there:
+
+```
+ssh -L 8765:localhost:8765 pi@raspberrypi.local
+```
+
+Docker Desktop on Windows or macOS won't work: it runs containers inside a virtual machine that can't see the
+MAC addresses on your home network. On Windows, use the quick start above instead.
 
 ## Configuration (optional)
 
@@ -83,7 +111,8 @@ Internal names in the code are in Spanish (it started as a personal project). Th
 ## How it works
 
 - `escanear.ps1` pings every address in your PC's /24 subnet, waits for Windows to resolve them, and returns
-  the devices in the ARP table as JSON.
+  the devices in the ARP table as JSON. On Linux, `escanear_linux()` in `monitor.py` does the same with `ping`
+  and `ip neigh`.
 - `monitor.py` runs that scan in a loop, keeps the device list and event log in `dispositivos.json`,
   looks up vendors from the MAC prefix, sends Telegram alerts and serves the dashboard.
 - `index.html` is the whole dashboard. It asks `/api/estado` for fresh data every 3 seconds.
@@ -106,7 +135,8 @@ python monitor.py --test
 
 - It sees which devices are on your network, not what they send. It can't inspect traffic or see attacks from the internet.
 - It only scans a /24 subnet (for example `192.168.1.0` to `192.168.1.255`).
-- It doesn't run in Docker on Windows: Docker Desktop's virtual machine can't see the MAC addresses on your home network.
+- It doesn't run in Docker Desktop on Windows or macOS: its virtual machine can't see the MAC addresses on your home network.
+  Docker on a Linux host works.
 
 ## License
 

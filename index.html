@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Home Network Monitor</title>
+<title>Who Is On My Wi-Fi</title>
 <style>
   :root {
     --bg: #0a0e13; --panel: #11171f; --panel-2: #0d131a; --border: #1f2a37; --text: #e6edf3; --muted: #8b98a8;
@@ -145,7 +145,7 @@
 <div id="toast" role="status" aria-live="polite"></div>
 <header>
   <div class="brand"><span class="radar" id="radar"></span>
-    <div><h1>Home Network Monitor</h1><div class="sub" id="sub">Connecting to the monitor…</div></div>
+    <div><h1>Who Is On My Wi-Fi</h1><div class="sub" id="sub">Connecting to the monitor…</div></div>
   </div>
   <nav aria-label="Sections">
     <a href="#overview">Overview</a>
@@ -497,7 +497,7 @@
     S.alerts = alerts(S);
     const unknown = S.dispositivos.filter(d => d.online && !d.conocido).length;
     $('alertCount').textContent = S.alerts.filter(serious).length || '';
-    document.title = unknown ? `(${unknown}) Home Network Monitor` : 'Home Network Monitor';
+    document.title = unknown ? `(${unknown}) Who Is On My Wi-Fi` : 'Who Is On My Wi-Fi';
     $('radar').classList.remove('down');
     $('sub').innerHTML = S.error ? `<span class="bad">Scan error: ${esc(S.error)}</span>`
       : S.ultimo_escaneo ? `${esc(S.red)} · last scan ${ago(S.ultimo_escaneo)} ago` : 'Running the first scan (about 10 s)…';

@@ -1,4 +1,4 @@
-"""Home Network Monitor: scans your home network every few seconds and shows it live in a web dashboard.
+"""Who Is On My Wi-Fi: scans your home network every few seconds and shows it live in a web dashboard.
 
 Usage: pythonw monitor.py  ->  http://localhost:8765      (python monitor.py --test = self-check)
 """
@@ -384,5 +384,5 @@ if __name__ == '__main__':
         threading.Thread(target=bucle_escaneo, daemon=True).start()
         threading.Thread(target=bucle_fabricantes, daemon=True).start()
         threading.Thread(target=bucle_router, daemon=True).start()
-        print(f'Home Network Monitor on http://localhost:{PUERTO}')
+        print(f'Who Is On My Wi-Fi on http://localhost:{PUERTO}')
         servidor.serve_forever()

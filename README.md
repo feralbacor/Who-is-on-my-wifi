@@ -1,4 +1,4 @@
-# Home Network Monitor
+# Who Is On My Wi-Fi
 
 See who is on your home network, live, from a small dashboard on your Windows PC, Linux box or Raspberry Pi.
 Get a Telegram message when a device you have never seen joins your Wi-Fi.

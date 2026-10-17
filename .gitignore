@@ -1,0 +1,6 @@
+# Your secrets and your network data: never commit these
+config.json
+router.json
+dispositivos.json
+dispositivos.json.tmp
+__pycache__/

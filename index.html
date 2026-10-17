@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Network Monitor</title>
+<style>
+  :root {
+    --bg: #0a0e13; --panel: #11171f; --panel-2: #0d131a; --border: #1f2a37; --text: #e6edf3; --muted: #8b98a8;
+    --ok: #2ecc71; --off: #4b5563; --warn: #f5a524; --danger: #ef4444; --accent: #38bdf8;
+    --g5: #38bdf8; --g24: #a78bfa; --wired: #94a3b8;
+    --critical: #ef4444; --high: #f97316; --medium: #f5a524; --low: #38bdf8; --info: #8b98a8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  a { color: var(--accent); }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; padding: 14px 24px;
+           border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: 0; z-index: 5; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  h1 { margin: 0; font-size: 18px; }
+  .sub { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .radar { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); animation: ping 2s infinite; }
+  .radar.down { background: var(--danger); animation: none; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(56,189,248,.6); } 70%, 100% { box-shadow: 0 0 0 12px rgba(56,189,248,0); } }
+  nav { display: flex; gap: 4px; overflow-x: auto; max-width: 100%; margin-left: auto; }
+  nav a { color: var(--muted); text-decoration: none; padding: 7px 12px; border-radius: 8px; white-space: nowrap;
+          display: flex; gap: 6px; align-items: center; }
+  nav a:hover, nav a:focus-visible { color: var(--text); background: var(--panel); }
+  nav a[aria-current="page"] { color: var(--text); background: var(--panel); box-shadow: inset 0 -2px 0 var(--accent); }
+  .count { font-size: 11px; font-weight: 700; background: var(--danger); color: #fff; border-radius: 99px; padding: 0 6px; }
+  .count:empty { display: none; }
+  main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+  section { display: grid; gap: 16px; }
+  section[hidden] { display: none; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+  .card > p:last-child, .card > ul:last-child, .card > ol:last-child { margin-bottom: 0; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 12px;
+       display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  h2 a { text-transform: none; letter-spacing: 0; text-decoration: none; font-weight: 400; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+  .kpi b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--muted); font-size: 12px; }
+  .kpi.hot { border-color: var(--warn); }
+  .kpi.hot b { color: var(--warn); }
+  .split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .stack { display: grid; gap: 16px; }
+  .muted { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .empty { color: var(--muted); margin: 0; }
+  .bad { color: var(--danger); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+  .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+  /* topology */
+  #topo { width: 100%; height: auto; display: block; }
+  .edge { stroke-width: 2; }
+  .edge.net { stroke: var(--accent); opacity: .5; }
+  .edge.b5 { stroke: var(--g5); }
+  .edge.b24 { stroke: var(--g24); }
+  .edge.wired { stroke: var(--wired); stroke-dasharray: 6 4; }
+  .edge.nob { stroke: var(--off); stroke-dasharray: 2 4; }
+  .node { cursor: pointer; outline: none; }
+  .node .dot { fill: var(--panel-2); stroke-width: 2.5; }
+  .node.known .dot { stroke: var(--ok); }
+  .node.unknown .dot { stroke: var(--warn); }
+  .node.hub .dot { stroke: var(--accent); }
+  .node:hover .dot, .node:focus-visible .dot { fill: #1b2633; stroke-width: 4; }
+  .node text { fill: var(--text); font-size: 11px; text-anchor: middle; }
+  .node text.ip { fill: var(--muted); font-size: 10px; }
+  .node text.glyph { font-size: 12px; font-weight: 700; dominant-baseline: central; }
+  .pulse { fill: none; stroke: var(--warn); transform-box: fill-box; transform-origin: center; animation: grow 1.8s infinite; }
+  @keyframes grow { from { transform: scale(1); opacity: .8; } to { transform: scale(1.9); opacity: 0; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .legend i { display: inline-block; width: 18px; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+  .legend i.ring { width: 10px; height: 10px; border: 2px solid; border-radius: 50%; }
+
+  /* alerts, events, bars */
+  .alert { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+           padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .alert:last-child { border-bottom: 0; }
+  .alert .t { font-weight: 600; }
+  .sev { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px;
+         border-radius: 99px; border: 1px solid currentColor; text-align: center; }
+  .sev.critical { color: var(--critical); } .sev.high { color: var(--high); } .sev.medium { color: var(--medium); }
+  .sev.low { color: var(--low); } .sev.info { color: var(--info); }
+  .event { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .event:last-child { border-bottom: 0; }
+  .event time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 92px; }
+  .i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .event .i { margin-top: 6px; }
+  .i.conectado { background: var(--ok); } .i.desconectado { background: var(--off); } .i.nuevo { background: var(--warn); }
+  .bar { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr) 2.5em; gap: 8px; align-items: center; margin: 6px 0; font-size: 13px; }
+  .bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar b { text-align: right; font-variant-numeric: tabular-nums; }
+  .track { height: 8px; background: var(--panel-2); border-radius: 99px; overflow: hidden; }
+  .fill { height: 100%; border-radius: 99px; }
+  dl.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; margin: 12px 0 0; font-size: 13px; }
+  dl.facts dt { color: var(--muted); }
+  dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+
+  /* tables and controls */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .toolbar input, .toolbar select, .toolbar button { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-width: 0; }
+  .toolbar input { flex: 1 1 240px; }
+  .tablewrap { overflow-x: auto; padding: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tr.offline td:not(:last-child) { opacity: .55; }
+  td.name { white-space: normal; min-width: 200px; }
+  td input { background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; width: 200px; max-width: 100%; }
+  .status { display: inline-flex; align-items: center; gap: 6px; }
+  .led { width: 9px; height: 9px; border-radius: 50%; background: var(--off); }
+  .led.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; border: 1px solid currentColor; margin-left: 6px; white-space: nowrap; }
+  .tag.unk { color: var(--warn); } .tag.priv { color: var(--muted); }
+  button { font-size: 12px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  button:hover, button:focus-visible { border-color: var(--accent); }
+  button.mine { border-color: var(--ok); color: var(--ok); }
+  .actions { display: flex; gap: 6px; justify-content: flex-end; }
+  #chart { width: 100%; height: auto; display: block; }
+  #chart rect { fill: var(--accent); }
+  #chart text { fill: var(--muted); font-size: 10px; text-anchor: middle; }
+  .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+  .settings ol, .settings ul { padding-left: 18px; }
+  .pill { font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: 0; padding: 2px 10px; border-radius: 99px; border: 1px solid currentColor; }
+  .pill.ok { color: var(--ok); } .pill.off { color: var(--muted); } .pill.bad { color: var(--danger); }
+  #toast { position: fixed; left: 50%; top: 16px; transform: translate(-50%, -160%); background: var(--warn); color: #111; font-weight: 600;
+           padding: 10px 18px; border-radius: 10px; transition: transform .3s; z-index: 9; max-width: calc(100% - 32px); }
+  #toast.show { transform: translate(-50%, 0); }
+  #toast:empty { display: none; }
+  @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+    .alert { grid-template-columns: 72px minmax(0, 1fr); }
+    .alert .actions { grid-column: 2; justify-content: flex-start; }
+  }
+  @media (prefers-reduced-motion: reduce) { .radar, .pulse { animation: none; } }
+</style>
+</head>
+<body>
+<div id="toast" role="status" aria-live="polite"></div>
+<header>
+  <div class="brand"><span class="radar" id="radar"></span>
+    <div><h1>Home Network Monitor</h1><div class="sub" id="sub">Connecting to the monitor…</div></div>
+  </div>
+  <nav aria-label="Sections">
+    <a href="#overview">Overview</a>
+    <a href="#assets">Assets</a>
+    <a href="#alerts">Alerts <span class="count" id="alertCount"></span></a>
+    <a href="#log">Activity log</a>
+    <a href="#reports">Reports</a>
+    <a href="#settings">Settings</a>
+  </nav>
+</header>
+<main>
+  <section id="v-overview">
+    <div class="kpis">
+      <div class="kpi"><b id="kOnline">–</b><span>Online now</span></div>
+      <div class="kpi" id="kUnknownBox"><b id="kUnknown">–</b><span>Unknown online</span></div>
+      <div class="kpi" id="kAlertsBox"><b id="kAlerts">–</b><span>Critical / high alerts</span></div>
+      <div class="kpi"><b id="kNew">–</b><span>New in the last 24 h</span></div>
+      <div class="kpi"><b id="kTotal">–</b><span>Devices ever seen</span></div>
+    </div>
+    <div class="split">
+      <div class="card">
+        <h2>Live network topology <span id="topoNote"></span></h2>
+        <svg id="topo" viewBox="0 0 640 430" role="img" aria-label="Network topology: the router in the middle and every online device around it"></svg>
+        <div class="legend">
+          <span><i style="border-color: var(--g5)"></i>5 GHz</span>
+          <span><i style="border-color: var(--g24)"></i>2.4 GHz</span>
+          <span><i style="border-color: var(--wired); border-top-style: dashed"></i>Cable</span>
+          <span><i style="border-color: var(--off); border-top-style: dotted"></i>Link unknown</span>
+          <span><i class="ring" style="border-color: var(--ok)"></i>Yours</span>
+          <span><i class="ring" style="border-color: var(--warn)"></i>Unknown</span>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card"><h2>Alert overview <a href="#alerts">View all</a></h2><div id="ovAlerts"></div></div>
+        <div class="card"><h2>Asset health</h2><div id="ovHealth"></div></div>
+      </div>
+    </div>
+    <div class="card"><h2>Recent activity <a href="#log">Full log</a></h2><div id="ovLog"></div></div>
+  </section>
+
+  <section id="v-assets" hidden>
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="Search by name, vendor, IP or MAC" aria-label="Search devices">
+      <select id="fAssets" aria-label="Show">
+        <option value="all">All devices</option><option value="online">Online</option>
+        <option value="unknown">Unknown</option><option value="offline">Offline</option>
+      </select>
+    </div>
+    <div class="card tablewrap"><table>
+      <thead><tr><th>Status</th><th>Device</th><th>IP</th><th>MAC</th><th>Wi-Fi</th><th>Signal</th><th>Seen</th><th><span class="sr">Actions</span></th></tr></thead>
+      <tbody id="tAssets"></tbody>
+    </table></div>
+    <p class="muted">Click <b>Mark as mine</b> on every device you recognise. Unknown devices raise alerts and Telegram messages.</p>
+  </section>
+
+  <section id="v-alerts" hidden>
+    <div class="card"><h2>Active alerts</h2><div id="alertList"></div></div>
+    <div class="card"><h2>What the severities mean</h2>
+      <dl class="facts">
+        <dt><span class="sev critical">critical</span></dt><dd>An unknown device is online with a weak signal (below −80 dBm): it may be outside your home.</dd>
+        <dt><span class="sev high">high</span></dt><dd>An unknown device is online, or the network scan is failing.</dd>
+        <dt><span class="sev medium">medium</span></dt><dd>An unknown device joined in the last 24 hours and has left again.</dd>
+        <dt><span class="sev low">low</span></dt><dd>The router integration is set up but cannot log in.</dd>
+        <dt><span class="sev info">info</span></dt><dd>An optional feature is not set up.</dd>
+      </dl>
+      <p class="muted">This monitor sees which devices are on your network, not what they send. It cannot inspect traffic or see attacks from the internet.</p>
+    </div>
+  </section>
+
+  <section id="v-log" hidden>
+    <div class="toolbar">
+      <input id="qLog" type="search" placeholder="Search by device, IP or MAC" aria-label="Search the log">
+      <select id="fLog" aria-label="Event type">
+        <option value="all">All events</option><option value="nuevo">New devices</option>
+        <option value="conectado">Connected</option><option value="desconectado">Disconnected</option>
+      </select>
+    </div>
+    <div class="card tablewrap"><table>
+      <thead><tr><th>Time</th><th>Event</th><th>Device</th><th>IP</th><th>MAC</th></tr></thead>
+      <tbody id="tLog"></tbody>
+    </table></div>
+    <p class="muted" id="logNote"></p>
+  </section>
+
+  <section id="v-reports" hidden>
+    <div class="toolbar">
+      <select id="fPeriod" aria-label="Period"><option value="1">Last 24 hours</option><option value="7">Last 7 days</option></select>
+      <button id="expAssets">Export devices (CSV)</button>
+      <button id="expLog">Export log (CSV)</button>
+    </div>
+    <div class="kpis" id="rStats"></div>
+    <div class="split">
+      <div class="card"><h2>Activity</h2><svg id="chart" viewBox="0 0 640 140" role="img" aria-label="Connections and disconnections over time"></svg></div>
+      <div class="card"><h2>Most active devices</h2><div id="rTop"></div></div>
+    </div>
+    <p class="muted" id="rNote"></p>
+  </section>
+
+  <section id="v-settings" hidden>
+    <div class="settings">
+      <div class="card"><h2>Network scanner</h2><dl class="facts" id="sScan"></dl>
+        <p class="muted">About every 20 s the monitor pings every address in your /24 subnet and reads the Windows ARP table.
+          Change the pause between scans with <code>PAUSA</code> in <code>monitor.py</code>.</p></div>
+      <div class="card"><h2>Telegram alerts <span id="sTelegram"></span></h2>
+        <p>Get a message when a device you have never seen joins your network.</p>
+        <ol class="muted">
+          <li>In Telegram, talk to <b>@BotFather</b>, create a bot and copy its token.</li>
+          <li>Send any message to your bot, open <code>https://api.telegram.org/bot&lt;token&gt;/getUpdates</code> and copy <code>chat.id</code>.</li>
+          <li>Put both in <code>config.json</code> as <code>telegram_token</code> and <code>telegram_chat_id</code>.</li>
+        </ol></div>
+      <div class="card"><h2>Router integration <span id="sRouter"></span></h2>
+        <p>Optional. Shows the Wi-Fi band (2.4 / 5 GHz) and signal of each device, and keeps sleeping phones marked online.</p>
+        <p class="muted">Works with ZTE F680 routers. Put the router admin login in <code>config.json</code> as <code>router_user</code> and
+          <code>router_password</code>. The monitor logs in for a second every minute, which may log you out of the router's own web page.</p></div>
+      <div class="card"><h2>Privacy</h2>
+        <ul class="muted">
+          <li>The dashboard only answers on this computer (<code>localhost</code>).</li>
+          <li>Device data stays in <code>dispositivos.json</code> next to <code>monitor.py</code>.</li>
+          <li>Only the vendor half of each MAC address is sent to <code>api.macvendors.com</code>.</li>
+          <li><code>config.json</code> and <code>dispositivos.json</code> are in <code>.gitignore</code>, so they never reach GitHub.</li>
+        </ul></div>
+    </div>
+  </section>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  const ipNum = ip => String(ip || '0.0.0.0').split('.').reduce((a, b) => a * 256 + +b, 0);
+  const isPrivate = mac => '26AE'.includes(String(mac)[1]?.toUpperCase());  // "locally administered" bit: phones hiding their real MAC
+  const BAND = {'5G': '5 GHz', '2.4G': '2.4 GHz', cable: 'Cable'};
+  const SEV = ['critical', 'high', 'medium', 'low', 'info'];
+  const VERB = {nuevo: 'joined for the first time', conectado: 'connected', desconectado: 'disconnected'};
+  const EVENT = {nuevo: 'New device', conectado: 'Connected', desconectado: 'Disconnected'};
+  const VIEWS = ['overview', 'assets', 'alerts', 'log', 'reports', 'settings'];
+  let S = null, now = Date.now() / 1000, byMac = {}, lastEvent = null, lastTopo = '', toastTimer;
+
+  const nameOf = d => !d ? 'Unknown device' : d.nombre || (isPrivate(d.mac) ? 'Phone or tablet' : d.fabricante) || 'Looking up vendor…';
+  const short = s => s.length > 18 ? s.slice(0, 17) + '…' : s;
+  const bandOf = d => BAND[d.banda] || '—';
+  const quality = s => s >= -60 ? 'excellent' : s >= -70 ? 'good' : s >= -80 ? 'fair' : 'weak';
+  const serious = a => a.sev === 'critical' || a.sev === 'high';
+  const iso = t => t ? new Date(t * 1000).toISOString() : '';
+  function ago(t) {
+    const s = Math.max(0, Math.round(now - t));
+    if (s < 60) return `${s} s`;
+    if (s < 3600) return `${Math.floor(s / 60)} min`;
+    if (s < 86400) return `${Math.floor(s / 3600)} h`;
+    return `${Math.floor(s / 86400)} d`;
+  }
+  const when = t => new Date(t * 1000).toLocaleString('en-GB', now - t > 72000
+    ? {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'} : {hour: '2-digit', minute: '2-digit'});
+
+  function alerts(st) {
+    const out = [];
+    if (st.error) out.push({sev: 'high', title: 'Network scan failing', text: st.error});
+    for (const d of st.dispositivos) {
+      if (d.conocido) continue;
+      if (d.online && d.senal != null && d.senal < -80)
+        out.push({sev: 'critical', d, title: 'Unknown device far from the router', text: `${d.ip} · ${d.senal} dBm on ${bandOf(d)}: it may be outside your home`});
+      else if (d.online)
+        out.push({sev: 'high', d, title: 'Unknown device online', text: `${d.ip} · connected for ${ago(d.desde)}`});
+      else if (now - d.primera_vez < 86400)
+        out.push({sev: 'medium', d, title: 'New unknown device today', text: `${d.ip} · last seen ${ago(d.ultima_vez)} ago`});
+    }
+    if (st.router === 'error') out.push({sev: 'low', title: 'Router login failing', text: 'Wi-Fi band and signal are unavailable. Check router_user and router_password in config.json.'});
+    if (!st.telegram) out.push({sev: 'info', title: 'Telegram alerts are off', text: 'Add telegram_token and telegram_chat_id to config.json to get alerts on your phone.'});
+    return out.sort((a, b) => SEV.indexOf(a.sev) - SEV.indexOf(b.sev));
+  }
+
+  const alertRows = (list, full) => list.map(a => `
+    <div class="alert">
+      <span class="sev ${a.sev}">${a.sev}</span>
+      <div><div class="t">${esc(a.title)}${a.d ? ' · ' + esc(nameOf(a.d)) : ''}</div><div class="muted">${esc(a.text)}</div></div>
+      ${a.d ? `<div class="actions"><button data-mine="${esc(a.d.mac)}">Mark as mine</button>${full ? `<button data-show="${esc(a.d.mac)}">View</button>` : ''}</div>` : '<span></span>'}
+    </div>`).join('');
+
+  const eventRows = list => list.map(e => `
+    <div class="event"><time>${when(e.t)}</time><span class="i ${esc(e.tipo)}"></span>
+      <div><b>${esc(nameOf(byMac[e.mac]))}</b> ${VERB[e.tipo] || esc(e.tipo)} <span class="muted">${esc(e.ip)}</span></div></div>`).join('')
+    || '<p class="empty">Nothing has happened yet. Devices joining and leaving will show up here.</p>';
+
+  function drawOverview() {
+    const ds = S.dispositivos, on = ds.filter(d => d.online), unknown = on.filter(d => !d.conocido).length;
+    const bad = S.alerts.filter(serious).length;
+    $('kOnline').textContent = on.length;
+    $('kUnknown').textContent = unknown;
+    $('kUnknownBox').classList.toggle('hot', unknown > 0);
+    $('kAlerts').textContent = bad;
+    $('kAlertsBox').classList.toggle('hot', bad > 0);
+    $('kNew').textContent = ds.filter(d => now - d.primera_vez < 86400).length;
+    $('kTotal').textContent = ds.length;
+    drawTopology();
+    $('ovAlerts').innerHTML = alertRows(S.alerts.slice(0, 4), false) || '<p class="empty">All clear. No alerts.</p>';
+    const clients = on.filter(d => d.ip !== S.gateway), n = Math.max(clients.length, 1);
+    const weak = clients.filter(d => d.senal != null && d.senal < -75);
+    const bars = [['5 GHz', '5G', 'var(--g5)'], ['2.4 GHz', '2.4G', 'var(--g24)'], ['Cable', 'cable', 'var(--wired)'], ['Link unknown', '', 'var(--off)']]
+      .map(([label, band, color]) => [label, clients.filter(d => (d.banda || '') === band).length, color]);
+    $('ovHealth').innerHTML = bars.map(([label, v, color]) => `
+      <div class="bar"><span>${label}</span><div class="track"><div class="fill" style="width:${v / n * 100}%;background:${color}"></div></div><b>${v}</b></div>`).join('')
+      + (S.router === 'ok' ? '' : '<p class="muted">Wi-Fi band and signal need the router integration (see Settings).</p>')
+      + `<dl class="facts">
+          <dt>Yours online</dt><dd>${on.length - unknown} of ${on.length}</dd>
+          <dt>Weak signal</dt><dd>${weak.length ? weak.map(d => `${esc(nameOf(d))} (${d.senal} dBm)`).join(', ') : 'None'}</dd>
+          <dt>Offline 7+ days</dt><dd>${ds.filter(d => !d.online && now - d.ultima_vez > 7 * 86400).length}</dd>
+        </dl>`;
+    $('ovLog').innerHTML = eventRows(S.eventos.slice(0, 8));
+  }
+
+  function drawTopology() {
+    const cx = 320, cy = 235, rx = 230, ry = 150, gap = 1.2;  // gap: radians left free at the top for the Internet link
+    const order = d => ({'5G': 0, '2.4G': 1, cable: 2}[d.banda] ?? 3);
+    const nodes = S.dispositivos.filter(d => d.online && d.ip !== S.gateway)
+      .sort((a, b) => order(a) - order(b) || ipNum(a.ip) - ipNum(b.ip));
+    const router = S.dispositivos.find(d => d.ip === S.gateway) || {mac: '', ip: S.gateway, nombre: 'Router'};
+    const edge = d => ({'5G': 'b5', '2.4G': 'b24', cable: 'wired'}[d.banda] || 'nob');
+    const width = d => d.senal == null ? 2 : Math.max(1, Math.min(4, (d.senal + 95) / 12));
+    const node = (d, x, y, r, cls) => `
+      <g class="node ${cls}" data-mac="${esc(d.mac)}" tabindex="0" role="button" aria-label="${esc(nameOf(d))}, ${esc(d.ip)}">
+        <title>${esc(nameOf(d))}&#10;${esc(d.ip)} · ${esc(d.mac)}${d.banda ? '&#10;' + bandOf(d) : ''}${d.senal != null ? ` · ${d.senal} dBm` : ''}</title>
+        ${cls === 'unknown' ? `<circle class="pulse" cx="${x}" cy="${y}" r="${r}"/>` : ''}
+        <circle class="dot" cx="${x}" cy="${y}" r="${r}"/>
+        <text class="glyph" x="${x}" y="${y}">${esc((nameOf(d).trim()[0] || '?').toUpperCase())}</text>
+        <text x="${x}" y="${y + r + 14}">${esc(short(nameOf(d)))}</text>
+        <text class="ip" x="${x}" y="${y + r + 26}">${esc(d.ip)}</text>
+      </g>`;
+    const pts = nodes.map((d, i) => {
+      const a = -Math.PI / 2 + gap / 2 + (2 * Math.PI - gap) * (i + .5) / nodes.length;
+      return {d, x: Math.round(cx + rx * Math.cos(a)), y: Math.round(cy + ry * Math.sin(a))};
+    });
+    const html = !S.ultimo_escaneo ? '<text x="320" y="215" fill="#8b98a8" text-anchor="middle">Waiting for the first scan…</text>'
+      : `<line class="edge net" x1="${cx}" y1="54" x2="${cx}" y2="${cy - 26}"/>`
+      + pts.map(p => `<line class="edge ${edge(p.d)}" style="stroke-width:${width(p.d)}" x1="${cx}" y1="${cy}" x2="${p.x}" y2="${p.y}"/>`).join('')
+      + `<g class="node hub"><circle class="dot" cx="${cx}" cy="36" r="18"/><text class="glyph" x="${cx}" y="36">🌐</text>
+           <text x="${cx + 28}" y="40" style="text-anchor:start">Internet</text></g>`
+      + node(router, cx, cy, 24, 'hub')
+      + pts.map(p => node(p.d, p.x, p.y, 16, p.d.conocido ? 'known' : 'unknown')).join('');
+    if (html !== lastTopo) $('topo').innerHTML = lastTopo = html;  // redraw only on change so focus and animations survive
+    const hidden = S.dispositivos.filter(d => !d.online).length;
+    $('topoNote').textContent = hidden ? `${hidden} offline not shown` : '';
+  }
+
+  function drawAssets() {
+    if (document.activeElement?.closest('#tAssets input')) return;  // don't overwrite a name being typed
+    const q = $('q').value.trim().toLowerCase(), f = $('fAssets').value;
+    const rows = S.dispositivos
+      .filter(d => (f === 'all' || (f === 'online' && d.online) || (f === 'offline' && !d.online) || (f === 'unknown' && !d.conocido))
+        && (!q || [nameOf(d), d.fabricante, d.ip, d.mac].join(' ').toLowerCase().includes(q)))
+      .sort((a, b) => (b.online - a.online) || (a.online ? (a.conocido - b.conocido) || ipNum(a.ip) - ipNum(b.ip) : b.ultima_vez - a.ultima_vez));
+    $('tAssets').innerHTML = rows.map(d => `
+      <tr class="${d.online ? '' : 'offline'}" data-mac="${esc(d.mac)}">
+        <td><span class="status"><span class="led ${d.online ? 'on' : ''}"></span>${d.online ? 'Online' : 'Offline'}</span></td>
+        <td class="name"><span class="nm">${esc(nameOf(d))}</span>${d.conocido ? '' : '<span class="tag unk">Unknown</span>'}${
+          isPrivate(d.mac) ? '<span class="tag priv" title="Phones and tablets hide their real MAC address">Private MAC</span>' : ''}
+          ${d.nombre && d.fabricante && !isPrivate(d.mac) ? `<div class="muted">${esc(d.fabricante)}</div>` : ''}</td>
+        <td class="mono">${esc(d.ip)}</td>
+        <td class="mono">${esc(d.mac)}</td>
+        <td>${d.online ? bandOf(d) : '—'}</td>
+        <td>${d.online && d.senal != null ? `${d.senal} dBm <span class="muted">${quality(d.senal)}</span>` : '—'}</td>
+        <td title="First seen ${when(d.primera_vez)}">${d.online ? 'for ' + ago(d.desde) : ago(d.ultima_vez) + ' ago'}</td>
+        <td><div class="actions"><button data-rename>Rename</button><button data-toggle class="${d.conocido ? 'mine' : ''}"
+          aria-pressed="${d.conocido}">${d.conocido ? '✓ Mine' : 'Mark as mine'}</button></div></td>
+      </tr>`).join('') || '<tr><td colspan="8" class="empty">No devices match.</td></tr>';
+  }
+
+  function drawAlerts() {
+    $('alertList').innerHTML = alertRows(S.alerts, true) || '<p class="empty">All clear. No alerts right now.</p>';
+  }
+
+  function drawLog() {
+    const t = $('fLog').value, q = $('qLog').value.trim().toLowerCase();
+    const evs = S.eventos.filter(e => (t === 'all' || e.tipo === t)
+      && (!q || [nameOf(byMac[e.mac]), e.ip, e.mac].join(' ').toLowerCase().includes(q)));
+    $('tLog').innerHTML = evs.map(e => `
+      <tr><td>${new Date(e.t * 1000).toLocaleString('en-GB', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit'})}</td>
+        <td><span class="status"><span class="i ${esc(e.tipo)}"></span>${EVENT[e.tipo] || esc(e.tipo)}</span></td>
+        <td>${esc(nameOf(byMac[e.mac]))}</td><td class="mono">${esc(e.ip)}</td><td class="mono">${esc(e.mac)}</td></tr>`).join('')
+      || '<tr><td colspan="5" class="empty">No events.</td></tr>';
+    $('logNote').textContent = `${S.eventos.length} events stored. The monitor keeps the latest 300.`;
+  }
+
+  function drawReports() {
+    const days = +$('fPeriod').value, start = new Date(now * 1000);
+    if (days === 1) { start.setMinutes(0, 0, 0); start.setHours(start.getHours() - 23); }  // 24 clock hours
+    else { start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - 6); }           // 7 calendar days
+    const since = start / 1000, size = days === 1 ? 3600 : 86400, n = days === 1 ? 24 : 7;
+    const evs = S.eventos.filter(e => e.t >= since), ds = S.dispositivos, seen = ds.filter(d => d.ultima_vez >= since);
+    $('rStats').innerHTML = [
+      ['Devices seen', seen.length], ['New devices', ds.filter(d => d.primera_vez >= since).length],
+      ['Unknown devices seen', seen.filter(d => !d.conocido).length],
+      ['Connections', evs.filter(e => e.tipo !== 'desconectado').length], ['Disconnections', evs.filter(e => e.tipo === 'desconectado').length],
+    ].map(([label, v]) => `<div class="kpi"><b>${v}</b><span>${label}</span></div>`).join('');
+    const counts = Array(n).fill(0);
+    for (const e of evs) counts[Math.min(n - 1, Math.floor((e.t - since) / size))]++;
+    const max = Math.max(1, ...counts), bw = 600 / n;
+    $('chart').innerHTML = counts.map((c, i) => {
+      const h = c / max * 110, t = new Date((since + i * size) * 1000);
+      const label = days === 1 ? String(t.getHours()).padStart(2, '0') + 'h' : t.toLocaleDateString('en-GB', {weekday: 'short'});
+      return `<g><title>${label}: ${c} event${c === 1 ? '' : 's'}</title>
+        <rect x="${20 + i * bw + 1}" y="${120 - h}" width="${bw - 2}" height="${h}" rx="2"/>
+        ${days === 1 && i % 3 ? '' : `<text x="${20 + i * bw + bw / 2}" y="136">${label}</text>`}</g>`;
+    }).join('');
+    const per = {};
+    for (const e of evs) per[e.mac] = (per[e.mac] || 0) + 1;
+    const top = Object.entries(per).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    $('rTop').innerHTML = top.map(([mac, c]) => `
+      <div class="bar"><span title="${esc(nameOf(byMac[mac]))}">${esc(nameOf(byMac[mac]))}</span>
+        <div class="track"><div class="fill" style="width:${c / top[0][1] * 100}%;background:var(--accent)"></div></div><b>${c}</b></div>`).join('')
+      || '<p class="empty">No activity in this period.</p>';
+    const oldest = S.eventos[S.eventos.length - 1]?.t;
+    $('rNote').textContent = oldest > since ? `The activity log only goes back to ${when(oldest)}, so older activity is not counted.` : '';
+  }
+
+  function drawSettings() {
+    const pill = (cls, text) => `<span class="pill ${cls}">${text}</span>`;
+    $('sScan').innerHTML = `
+      <dt>Status</dt><dd>${S.error ? pill('bad', 'Failing') + ' ' + esc(S.error) : pill('ok', 'Running')}</dd>
+      <dt>Subnet</dt><dd>${esc(S.red) || '—'}</dd>
+      <dt>Router</dt><dd>${esc(S.gateway) || '—'}</dd>
+      <dt>Last scan</dt><dd>${S.ultimo_escaneo ? ago(S.ultimo_escaneo) + ' ago' : '—'}</dd>`;
+    $('sRouter').innerHTML = {ok: pill('ok', 'Connected'), error: pill('bad', 'Login failing')}[S.router] || pill('off', 'Not set up');
+    $('sTelegram').innerHTML = S.telegram ? pill('ok', 'On') : pill('off', 'Not set up');
+  }
+
+  function render() {
+    const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+    for (const id of VIEWS) $('v-' + id).hidden = id !== v;
+    document.querySelectorAll('nav a').forEach(a =>
+      a.getAttribute('href') === '#' + v ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+    if (S) ({overview: drawOverview, assets: drawAssets, alerts: drawAlerts, log: drawLog, reports: drawReports, settings: drawSettings})[v]();
+  }
+
+  function toast(msg) {
+    $('toast').textContent = msg;
+    $('toast').classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $('toast').classList.remove('show'), 6000);
+  }
+
+  async function refresh() {
+    try {
+      S = await (await fetch('/api/estado')).json();
+    } catch {
+      $('radar').classList.add('down');
+      $('sub').innerHTML = '<span class="bad">Lost connection to the monitor. Is it running?</span>';
+      return;
+    }
+    now = S.ahora;
+    byMac = Object.fromEntries(S.dispositivos.map(d => [d.mac, d]));
+    S.alerts = alerts(S);
+    const unknown = S.dispositivos.filter(d => d.online && !d.conocido).length;
+    $('alertCount').textContent = S.alerts.filter(serious).length || '';
+    document.title = unknown ? `(${unknown}) Home Network Monitor` : 'Home Network Monitor';
+    $('radar').classList.remove('down');
+    $('sub').innerHTML = S.error ? `<span class="bad">Scan error: ${esc(S.error)}</span>`
+      : S.ultimo_escaneo ? `${esc(S.red)} · last scan ${ago(S.ultimo_escaneo)} ago` : 'Running the first scan (about 10 s)…';
+    if (lastEvent !== null) {
+      const e = S.eventos.find(e => e.t > lastEvent && e.tipo !== 'desconectado' && !byMac[e.mac]?.conocido);
+      if (e) toast(`⚠ ${nameOf(byMac[e.mac])} just connected (${e.ip})`);
+    }
+    lastEvent = S.eventos[0]?.t ?? lastEvent ?? 0;
+    render();
+  }
+
+  async function save(change) {
+    await fetch('/api/dispositivo', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(change)});
+    refresh();
+  }
+
+  function showAsset(mac) {
+    $('q').value = mac;
+    $('fAssets').value = 'all';
+    location.hash = '#assets';
+    render();
+  }
+
+  // a leading = + @ or - makes Excel run the cell as a formula
+  const csv = rows => rows.map(r => r.map(v => {
+    v = String(v ?? '');
+    return `"${(/^[=+@]|^-(?!\d)/.test(v) ? "'" + v : v).replace(/"/g, '""')}"`;
+  }).join(',')).join('\r\n');
+  function download(name, text) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], {type: 'text/csv'}));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  $('expAssets').addEventListener('click', () => S && download('devices.csv', csv([
+    ['Name', 'Vendor', 'IP', 'MAC', 'Mine', 'Online', 'Wi-Fi', 'Signal (dBm)', 'First seen', 'Last seen'],
+    ...S.dispositivos.map(d => [nameOf(d), d.fabricante, d.ip, d.mac, d.conocido ? 'yes' : 'no', d.online ? 'yes' : 'no',
+      BAND[d.banda] || '', d.senal, iso(d.primera_vez), iso(d.ultima_vez)])])));
+  $('expLog').addEventListener('click', () => S && download('activity-log.csv', csv([
+    ['Time', 'Event', 'Device', 'IP', 'MAC'], ...S.eventos.map(e => [iso(e.t), EVENT[e.tipo], nameOf(byMac[e.mac]), e.ip, e.mac])])));
+
+  $('tAssets').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const row = b.closest('tr'), mac = row.dataset.mac, d = byMac[mac];
+    if (b.hasAttribute('data-toggle')) return save({mac, conocido: !d.conocido});
+    const input = document.createElement('input');
+    input.value = d.nombre;
+    input.placeholder = nameOf(d);
+    input.setAttribute('aria-label', 'Device name');
+    row.querySelector('.nm').replaceWith(input);
+    input.focus();
+    let done = false;
+    const finish = ok => {
+      if (done) return;
+      done = true;
+      input.blur();
+      ok ? save({mac, nombre: input.value}) : refresh();
+    };
+    input.addEventListener('keydown', ev => { if (ev.key === 'Enter') finish(true); if (ev.key === 'Escape') finish(false); });
+    input.addEventListener('blur', () => finish(true));
+  });
+  document.addEventListener('click', e => {
+    const mine = e.target.closest('[data-mine]'), show = e.target.closest('[data-show]');
+    if (mine) save({mac: mine.dataset.mine, conocido: true});
+    if (show) showAsset(show.dataset.show);
+  });
+  $('topo').addEventListener('click', e => {
+    const n = e.target.closest('[data-mac]');
+    if (n?.dataset.mac) showAsset(n.dataset.mac);
+  });
+  $('topo').addEventListener('keydown', e => {
+    const n = e.target.closest('[data-mac]');
+    if ((e.key === 'Enter' || e.key === ' ') && n?.dataset.mac) { e.preventDefault(); showAsset(n.dataset.mac); }
+  });
+  ['q', 'fAssets', 'qLog', 'fLog', 'fPeriod'].forEach(id => $(id).addEventListener('input', render));
+  window.addEventListener('hashchange', render);
+
+  render();
+  refresh();
+  setInterval(refresh, 3000);
+</script>
+</body>
+</html>
